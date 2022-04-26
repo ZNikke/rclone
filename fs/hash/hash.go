@@ -4,12 +4,14 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
+	"hash/adler32"
 	"io"
 	"strings"
 
@@ -76,6 +78,12 @@ var (
 
 	// SHA256 indicates SHA-256 support
 	SHA256 Type
+
+	// SHA512 indicates SHA-512 support
+	SHA512 Type
+
+	// ADLER32 indicates Adler-32 support
+	ADLER32 Type
 )
 
 func init() {
@@ -84,6 +92,8 @@ func init() {
 	Whirlpool = RegisterHash("whirlpool", "Whirlpool", 128, whirlpool.New)
 	CRC32 = RegisterHash("crc32", "CRC-32", 8, func() hash.Hash { return crc32.NewIEEE() })
 	SHA256 = RegisterHash("sha256", "SHA-256", 64, sha256.New)
+	SHA512 = RegisterHash("sha512", "SHA-512", 128, sha512.New)
+	ADLER32 = RegisterHash("adler32", "ADLER-32", 8, func() hash.Hash { return adler32.New() })
 }
 
 // Supported returns a set of all the supported hashes by

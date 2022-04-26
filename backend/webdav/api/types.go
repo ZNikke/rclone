@@ -3,6 +3,8 @@ package api
 
 import (
 	"encoding/xml"
+	"encoding/base64"
+	"encoding/hex"
 	"regexp"
 	"strconv"
 	"strings"
@@ -72,7 +74,8 @@ type Prop struct {
 	IsCollection *string   `xml:"DAV: prop>iscollection,omitempty"` // this is a Microsoft extension see #2716
 	Size         int64     `xml:"DAV: prop>getcontentlength,omitempty"`
 	Modified     Time      `xml:"DAV: prop>getlastmodified,omitempty"`
-	Checksums    []string  `xml:"prop>checksums>checksum,omitempty"`
+	OChecksums    []string  `xml:"prop>checksums>checksum,omitempty"`
+	DChecksums    []string  `xml:"prop>Checksums,omitempty"`
 }
 
 // Parse a status of the form "HTTP/1.1 200 OK" or "HTTP/1.1 200"
@@ -99,12 +102,14 @@ func (p *Prop) StatusOK() bool {
 }
 
 // Hashes returns a map of all checksums - may be nil
+// Tries to handle both OwnCloud and dCache style checksums
 func (p *Prop) Hashes() (hashes map[hash.Type]string) {
-	if len(p.Checksums) == 0 {
+	if len(p.OChecksums) == 0 && len(p.DChecksums) == 0{
 		return nil
 	}
 	hashes = make(map[hash.Type]string)
-	for _, checksums := range p.Checksums {
+	// OwnCloud
+	for _, checksums := range p.OChecksums {
 		checksums = strings.ToLower(checksums)
 		for _, checksum := range strings.Split(checksums, " ") {
 			switch {
@@ -112,6 +117,40 @@ func (p *Prop) Hashes() (hashes map[hash.Type]string) {
 				hashes[hash.SHA1] = checksum[5:]
 			case strings.HasPrefix(checksum, "md5:"):
 				hashes[hash.MD5] = checksum[4:]
+			}
+		}
+	}
+	// dCache
+	for _, checksums := range p.DChecksums {
+		for _, checksum := range strings.Split(checksums, ",") {
+			var ht hash.Type
+			encval := ""
+			checksumlc := strings.ToLower(checksum)
+			switch {
+			case strings.HasPrefix(checksumlc, "md5="):
+				encval = checksum[4:]
+				ht = hash.MD5
+			case strings.HasPrefix(checksumlc, "sha="):
+				encval = checksum[4:]
+				ht = hash.SHA1
+			case strings.HasPrefix(checksumlc, "sha-256="):
+				encval = checksum[8:]
+				ht = hash.SHA256
+			case strings.HasPrefix(checksumlc, "sha-512="):
+				encval = checksum[8:]
+				ht = hash.SHA512
+			case strings.HasPrefix(checksumlc, "adler32="):
+				hashes[hash.ADLER32] = checksumlc[8:]
+			}
+			if(encval != "") {
+				decoded, err := base64.StdEncoding.DecodeString(encval)
+				if err == nil {
+					hs := hex.EncodeToString(decoded)
+					//fs.Debugf(nil, "%s in %s Base64-decoded %q hex %s", ht.String(), encval, decoded, hs)
+					hashes[ht] = hs
+				} else {
+					fs.Debugf(nil, "Base64 decode error: %s", err)
+				}
 			}
 		}
 	}
